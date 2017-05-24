@@ -68,3 +68,52 @@ def pad_data(data):
   padded_data = padded_data.reshape((n * padded_data.shape[1],
     n * padded_data.shape[3]) + padded_data.shape[4:])
   return padded_data
+
+"""
+Histogram activity matrix
+Inputs:
+  data [np.ndarray] data matrix, can have shapes:
+    1D tensor [data_points]
+    2D tensor [batch, data_points] - will plot avg hist, summing over batch
+    3D tensor [batch, time_point, data_points] - will plot avg hist over time
+  title: [str] for title of figure
+  save_filename: [str] holding output directory for writing,
+"""
+def save_activity_hist(data, num_bins="auto", title="",
+  save_filename="./hist.pdf"):
+  num_dim = data.ndim
+  if num_dim > 1:
+    data = np.mean(data, axis=0)
+  (fig, ax) = plt.subplots(1)
+  vals, bins, patches = ax.hist(data, bins=100, histtype="barstacked",
+    stacked=True)
+  ax.set_xlabel('Activity')
+  ax.set_ylabel('Count')
+  fig.suptitle(title, y=1.0, x=0.5)
+  fig.tight_layout()
+  fig.savefig(save_filename)
+  plt.close(fig)
+
+"""
+Generate a bar graph of data
+Inputs:
+  data: [np.ndarray] of shape (N,)
+  xticklabels: [list of N str] indicating the labels for the xticks
+  save_filename: [str] indicating where the file should be saved
+  xlabel: [str] indicating the x-axis label
+  ylabel: [str] indicating the y-axis label
+  title: [str] indicating the plot title
+TODO: set num_xticks
+"""
+def save_bar(data, num_xticks=5, title="", save_filename="./bar_fig.pdf",
+  xlabel="", ylabel=""):
+  fig, ax = plt.subplots(1)
+  bar = ax.bar(np.arange(len(data)), data)
+  #xticklabels = [str(int(val)) for val in np.arange(len(data))]
+  #xticks = ax.get_xticks()
+  #ax.set_xticklabels(xticklabels)
+  ax.set_xlabel(xlabel)
+  ax.set_ylabel(ylabel)
+  fig.suptitle(title, y=1.0, x=0.5)
+  fig.savefig(save_filename, transparent=True)
+  plt.close(fig)
