@@ -26,13 +26,13 @@ def extract_images(filename, num_images=50):
     return full_img_data[im_keep_idx, ...]
 
 ## Model params
-project_dir = os.path.expanduser("~")+"/Work/DensityLearner/" 
-out_dir = os.path.join(project_dir, "density_outputs/")
+project_dir = os.path.expanduser("~")+"/Work/DensityLearner/"
+out_dir = os.path.join(project_dir, "test_density_outputs/")
 checkpoint_location = os.path.join(project_dir, "ica_outputs/ica_chk-30000")
 log_interval = 10
 checkpoint_interval = 10000
-device = "/gpu:0"
-num_batches = 10000
+device = "/cpu:0"
+num_batches = 1000#10000
 batch_size = 300
 b_learning_rate = 0.01
 v_step_size = 0.01
@@ -41,7 +41,7 @@ num_v = 100
 eps = 1e-12
 
 ## Data params
-num_images = 50
+num_images = 10#50
 epoch_size = num_batches * batch_size
 patch_edge_size = 20
 
@@ -108,10 +108,10 @@ with tf.device(device):
       projected_err = tf.matmul(u_recon_err, b)
       dedv = tf.subtract(projected_err, tf.multiply(tf.sqrt(2.0),
         tf.sign(v)), name="dedv")
-      aprox_hessian = -tf.matmul(tf.abs(u_recon), tf.square(b))
-      v_gradient_scale = tf.divide(v_step_size,
-        tf.add(tf.reduce_mean(aprox_hessian, axis=0), 1e-12))
-      #v_gradient_scale = tf.constant(v_step_size)
+      #aprox_hessian = -tf.matmul(tf.abs(u_recon), tf.square(b))
+      #v_gradient_scale = tf.divide(v_step_size,
+      #  tf.add(tf.reduce_mean(aprox_hessian, axis=0), 1e-12))
+      v_gradient_scale = tf.constant(v_step_size)
       dv = tf.multiply(v_gradient_scale, dedv)
       step_v = v.assign_add(dv)
       reset_v = v.assign(v_zeros)
@@ -124,6 +124,16 @@ with tf.device(device):
       b_gradient = tf.divide(op2, tf.to_float(batch_size))
       update_weights = optimizer.apply_gradients([(b_gradient, b)],
         global_step=global_step)
+
+    with tf.name_scope("likelihood") as scope:
+      #likelihood = tf.subtract(tf.add(-tf.log(tf.abs(tf.matrix_determinant(a))),
+      #  tf.reduce_mean(tf.reduce_sum(tf.subtract(tf.divide(-tf.log(sigma),
+      #  2.0), u_recon), axis=1), axis=0)),
+      #  tf.reduce_mean(tf.reduce_sum(tf.abs(v), axis=1), axis=0))
+      likelihood = tf.subtract(
+        tf.reduce_mean(tf.reduce_sum(tf.subtract(tf.divide(-tf.log(sigma),
+        2.0), u_recon), axis=1), axis=0),
+        tf.reduce_mean(tf.reduce_sum(tf.abs(v), axis=1), axis=0))
 
     ica_saver = tf.train.Saver(var_list=[a], max_to_keep=2)
     density_saver = tf.train.Saver(var_list=[b], max_to_keep=2)
@@ -141,6 +151,7 @@ with tf.device(device):
       tf.summary.histogram("a", a)
       tf.summary.histogram("b", b)
       tf.summary.histogram("sigma", sigma)
+      tf.summary.histogram("likelihood", likelihood)
       tf.summary.scalar("avg_u_recon_err", tf.reduce_mean(u_recon_err))
       tf.summary.histogram("b_gradient", b_gradient)
 
@@ -201,16 +212,17 @@ with tf.Session(graph=graph) as sess:
     if step % log_interval == 0:
       summary = sess.run(merged_summaries, feed_dict)
       train_writer.add_summary(summary, step)
-      b_weights = sess.run(b, feed_dict)
-      pf.save_data_tiled(b_weights.reshape(num_v,
+      [b_eval, b_grad_eval, likelihood_eval] = sess.run([b, b_gradient,
+        likelihood], feed_dict)
+      pf.save_data_tiled(b_eval.reshape(num_v,
         int(np.sqrt(num_neurons)), int(np.sqrt(num_neurons))), normalize=False,
         title="B matrix at step "+str(step),
         save_filename=out_dir+"b_weights_"+str(step).zfill(4)+".png")
-      pf.save_bar(np.linalg.norm(b_weights, axis=1, keepdims=False),
+      pf.save_bar(np.linalg.norm(b_eval, axis=1, keepdims=False),
         num_xticks=5, title="B l2 norm",
         save_filename=(out_dir+"b_norm_"+str(step).zfill(4)+".png"),
         xlabel="Basis Index", ylabel="L2 Norm")
-      print("step "+str(step))
+      print("step "+str(step).zfill(4)+"\tlikelihood "+str(likelihood_eval))
     if step % checkpoint_interval == 0:
       full_saver.save(sess, save_path=out_dir+"density_chk",
         global_step=global_step)
